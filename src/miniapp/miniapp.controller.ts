@@ -614,8 +614,8 @@ export class MiniappController {
     @UseInterceptors(FileInterceptor('file', {
         limits: { fileSize: 5 * 1024 * 1024 },
         fileFilter: (_req, file, cb) => {
-            if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
-            else cb(new ForbiddenException('Only jpeg/png/webp/gif allowed'), false);
+            if (/^image\/(jpeg|png|webp|gif|heic|heif)$/.test(file.mimetype)) cb(null, true);
+            else cb(new ForbiddenException('Only jpeg/png/webp/gif/heic/heif allowed'), false);
         },
     }))
     async uploadAvatar(
@@ -657,8 +657,8 @@ export class MiniappController {
     @UseInterceptors(FilesInterceptor('files', 10, {
         limits: { fileSize: 5 * 1024 * 1024 },
         fileFilter: (_req, file, cb) => {
-            if (/^image\/(jpeg|png|webp|gif)$/.test(file.mimetype)) cb(null, true);
-            else cb(new ForbiddenException('Only jpeg/png/webp/gif allowed'), false);
+            if (/^image\/(jpeg|png|webp|gif|heic|heif)$/.test(file.mimetype)) cb(null, true);
+            else cb(new ForbiddenException('Only jpeg/png/webp/gif/heic/heif allowed'), false);
         },
     }))
     async uploadEventImages(
