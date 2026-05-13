@@ -10,6 +10,7 @@ import { UsersService } from '../users/users.service';
 import { PetsService } from '../pets/pets.service';
 import { PetMemberRole } from '../pets/entities/pet-member.entity';
 import { PetEventsService } from '../pet-events/pet-events.service';
+import { ChartService } from './chart.service';
 import { User } from '../users/entities/user.entity';
 import { Pet } from '../pets/entities/pet.entity';
 import { PetEvent, PetEventType, WalkEventValue, FoodEventValue, WeightEventValue, NoteEventValue } from '../pet-events/entities/pet-event.entity';
@@ -49,12 +50,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly editEventSessions = new Map<string, EditEventSession>();
     private readonly awaitingPetAvatar = new Map<string, string>(); // telegramId → petId
     private readonly foodLogSessions = new Map<string, FoodLogSession>();
+    private readonly eventSortDesc = new Map<string, boolean>(); // telegramId → sort descending (default true)
+    private readonly eventFilter = new Map<string, string>(); // telegramId → 'all'|'WALK'|'FOOD'|'WEIGHT'|'NOTE'
 
     constructor(
         private readonly configService: ConfigService,
         private readonly usersService: UsersService,
         private readonly petsService: PetsService,
         private readonly petEventsService: PetEventsService,
+        private readonly chartService: ChartService,
     ) { }
 
     /** Resolve language: from User entity or from Telegram context */
@@ -1119,6 +1123,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 const events = await this.petEventsService.getTodayEventsForUser(user);
                 await ctx.answerCallbackQuery();
                 await ctx.reply(this.buildTodayStats(events, lang));
+                const chartBuf = await this.chartService.renderStatsChart(events);
+                if (chartBuf) {
+                    await ctx.replyWithPhoto(new InputFile(chartBuf, 'stats.png'));
+                }
                 return;
             }
 
@@ -1128,6 +1136,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 const events7d = await this.petEventsService.getEventsForUserSince(user, since);
                 await ctx.answerCallbackQuery();
                 await ctx.reply(this.buildPeriodStats(events7d, 'statsTitle7d', lang));
+                const chartBuf7d = await this.chartService.renderStatsChart(events7d);
+                if (chartBuf7d) {
+                    await ctx.replyWithPhoto(new InputFile(chartBuf7d, 'stats.png'));
+                }
                 return;
             }
 
@@ -1137,6 +1149,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 const events30d = await this.petEventsService.getEventsForUserSince(user, since);
                 await ctx.answerCallbackQuery();
                 await ctx.reply(this.buildPeriodStats(events30d, 'statsTitle30d', lang));
+                const chartBuf30d = await this.chartService.renderStatsChart(events30d);
+                if (chartBuf30d) {
+                    await ctx.replyWithPhoto(new InputFile(chartBuf30d, 'stats.png'));
+                }
                 return;
             }
 
@@ -1282,6 +1298,46 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 if (cbData === 'no_del_evt') {
                     await ctx.answerCallbackQuery();
                     await ctx.reply(t('eventDeleteCancelled', lang));
+                    return;
+                }
+
+                // Event filter callbacks
+                if (cbData.startsWith('evt_filter_')) {
+                    const filter = cbData.slice('evt_filter_'.length).toUpperCase(); // ALL, WALK, FOOD, WEIGHT, NOTE
+                    this.eventFilter.set(telegramId, filter === 'ALL' ? 'all' : filter);
+                    await ctx.answerCallbackQuery();
+                    await this.sendEventsView(ctx, user, pet, lang, telegramId);
+                    return;
+                }
+
+                // Event sort toggle
+                if (cbData === MENU_CALLBACKS.EVT_SORT_TOGGLE) {
+                    const current = this.eventSortDesc.get(telegramId) ?? true;
+                    this.eventSortDesc.set(telegramId, !current);
+                    await ctx.answerCallbackQuery();
+                    await this.sendEventsView(ctx, user, pet, lang, telegramId);
+                    return;
+                }
+
+                // Edit event — start edit session
+                if (cbData.startsWith('edit_evt_')) {
+                    const eventId = cbData.slice('edit_evt_'.length);
+                    const evToEdit = await this.petEventsService.findById(eventId);
+                    if (!evToEdit) {
+                        await ctx.answerCallbackQuery({ text: t('editEventNotFound', lang) });
+                        return;
+                    }
+                    this.editEventSessions.set(telegramId, { eventId });
+                    await ctx.answerCallbackQuery();
+                    let prompt: string;
+                    switch (evToEdit.type) {
+                        case PetEventType.NOTE: prompt = t('editEventPromptNote', lang); break;
+                        case PetEventType.WEIGHT: prompt = t('editEventPromptWeight', lang); break;
+                        case PetEventType.WALK: prompt = t('editEventPromptWalkNote', lang); break;
+                        case PetEventType.FOOD: prompt = t('editEventPromptFoodNote', lang); break;
+                        default: prompt = t('editEventPromptNote', lang);
+                    }
+                    await this.replyWithCancel(ctx, prompt, lang);
                     return;
                 }
 
@@ -1615,25 +1671,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             }
             case 'EVENTS': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
-                const recentEvents = await this.petEventsService.getTodayEventsForUser(user);
-                if (recentEvents.length === 0) {
-                    await ctx.reply(t('eventsEmpty', lang));
-                    return true;
-                }
-                const header = t('eventsTitle', lang, { petName: pet.name });
-                const eventLines: string[] = [header];
-                const eventButtons: { text: string; callback_data: string }[][] = [];
-                for (const ev of recentEvents.slice(-10).reverse()) {
-                    const label = this.getEventLabel(ev, lang);
-                    const time = new Date(ev.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                    eventLines.push(`${time} — ${label}`);
-                    eventButtons.push([
-                        { text: `${t('eventDeleteButton', lang)} (${time} ${this.getEventTypeEmoji(ev.type)})`, callback_data: `del_evt_${ev.id}` },
-                    ]);
-                }
-                await ctx.reply(eventLines.join('\n'), {
-                    reply_markup: eventButtons.length ? { inline_keyboard: eventButtons } : undefined,
-                });
+                await this.sendEventsView(ctx, user, pet, lang, telegramId);
                 return true;
             }
             case 'MINIAPP': {
@@ -1825,6 +1863,66 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             case PetEventType.WEIGHT: return '⚖️';
             case PetEventType.NOTE: return '📝';
             default: return '📌';
+        }
+    }
+
+    private async sendEventsView(ctx: BotContext, user: User, pet: Pet, lang: Lang, telegramId: string): Promise<void> {
+        let recentEvents = await this.petEventsService.getTodayEventsForUser(user);
+        if (recentEvents.length === 0) {
+            await ctx.reply(t('eventsEmpty', lang));
+            return;
+        }
+
+        // Apply filter
+        const filter = this.eventFilter.get(telegramId) ?? 'all';
+        if (filter !== 'all') {
+            recentEvents = recentEvents.filter(e => e.type === filter);
+        }
+
+        // Apply sort
+        const sortDesc = this.eventSortDesc.get(telegramId) ?? true;
+        const displayed = sortDesc
+            ? [...recentEvents].slice(-10).reverse()
+            : [...recentEvents].slice(0, 10);
+
+        const filterLabel = filter === 'all' ? t('evtFilterAll', lang) : this.getEventTypeEmoji(filter as PetEventType);
+        const header = filter === 'all'
+            ? t('eventsTitle', lang, { petName: pet.name })
+            : t('eventsFiltered', lang, { petName: pet.name, filter: filterLabel });
+
+        // Filter row
+        const filterRow = [
+            { text: t('evtFilterAll', lang), callback_data: MENU_CALLBACKS.EVT_FILTER_ALL },
+            { text: t('evtFilterWalk', lang), callback_data: MENU_CALLBACKS.EVT_FILTER_WALK },
+            { text: t('evtFilterFood', lang), callback_data: MENU_CALLBACKS.EVT_FILTER_FOOD },
+            { text: t('evtFilterWeight', lang), callback_data: MENU_CALLBACKS.EVT_FILTER_WEIGHT },
+            { text: t('evtFilterNote', lang), callback_data: MENU_CALLBACKS.EVT_FILTER_NOTE },
+        ];
+
+        // Sort toggle button
+        const sortBtn = sortDesc
+            ? { text: t('evtSortDesc', lang), callback_data: MENU_CALLBACKS.EVT_SORT_TOGGLE }
+            : { text: t('evtSortAsc', lang), callback_data: MENU_CALLBACKS.EVT_SORT_TOGGLE };
+
+        // Header message with filter/sort controls
+        await ctx.reply(header, {
+            reply_markup: { inline_keyboard: [filterRow, [sortBtn]] },
+        });
+
+        // Each event as a separate message with its own edit/delete buttons
+        for (const ev of displayed) {
+            const label = this.getEventLabel(ev, lang);
+            const d = new Date(ev.createdAt);
+            const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+            const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            await ctx.reply(`${date} ${time} — ${label}`, {
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: `✏️ ${t('eventEditButton', lang)}`, callback_data: `edit_evt_${ev.id}` },
+                        { text: `${t('eventDeleteButton', lang)}`, callback_data: `del_evt_${ev.id}` },
+                    ]],
+                },
+            });
         }
     }
 

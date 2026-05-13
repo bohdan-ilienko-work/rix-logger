@@ -796,6 +796,21 @@ const translations = {
     statsTitle30d: { ru: 'Статистика за 30 дней:', en: 'Stats for 30 days:', uk: 'Статистика за 30 днів:', bg: 'Статистика за 30 дни:', pl: 'Statystyki za 30 dni:', de: 'Statistik für 30 Tage:' },
     statsTotalWalkMin: { ru: 'Суммарное время прогулок: {v} мин', en: 'Total walk time: {v} min', uk: 'Сумарний час прогулянок: {v} хв', bg: 'Общо време на разходки: {v} мин', pl: 'Łączny czas spacerów: {v} min', de: 'Gesamte Spazierzeit: {v} Min' },
 
+    // ─── Events filter/sort/edit ───
+    evtFilterAll: { ru: '📋 Все', en: '📋 All', uk: '📋 Усі', bg: '📋 Всички', pl: '📋 Wszystkie', de: '📋 Alle' },
+    evtFilterWalk: { ru: '🦮', en: '🦮', uk: '🦮', bg: '🦮', pl: '🦮', de: '🦮' },
+    evtFilterFood: { ru: '🍽', en: '🍽', uk: '🍽', bg: '🍽', pl: '🍽', de: '🍽' },
+    evtFilterWeight: { ru: '⚖️', en: '⚖️', uk: '⚖️', bg: '⚖️', pl: '⚖️', de: '⚖️' },
+    evtFilterNote: { ru: '📝', en: '📝', uk: '📝', bg: '📝', pl: '📝', de: '📝' },
+    evtSortAsc: { ru: '⬆️ Старые', en: '⬆️ Oldest', uk: '⬆️ Старі', bg: '⬆️ Стари', pl: '⬆️ Najstarsze', de: '⬆️ Älteste' },
+    evtSortDesc: { ru: '⬇️ Новые', en: '⬇️ Newest', uk: '⬇️ Нові', bg: '⬇️ Нови', pl: '⬇️ Najnowsze', de: '⬇️ Neueste' },
+    eventEditButton: { ru: '✏️ Ред.', en: '✏️ Edit', uk: '✏️ Ред.', bg: '✏️ Ред.', pl: '✏️ Edytuj', de: '✏️ Bearb.' },
+    editEventPromptNote: { ru: 'Введите новый текст заметки:', en: 'Enter new note text:', uk: 'Введіть новий текст нотатки:', bg: 'Въведете нов текст на бележката:', pl: 'Wpisz nowy tekst notatki:', de: 'Gib neuen Notiztext ein:' },
+    editEventPromptWeight: { ru: 'Введите новый вес (кг):', en: 'Enter new weight (kg):', uk: 'Введіть нову вагу (кг):', bg: 'Въведете ново тегло (кг):', pl: 'Wpisz nową wagę (kg):', de: 'Gib neues Gewicht ein (kg):' },
+    editEventPromptWalkNote: { ru: 'Введите новую заметку к прогулке:', en: 'Enter new walk note:', uk: 'Введіть нову нотатку до прогулянки:', bg: 'Въведете нова бележка за разходката:', pl: 'Wpisz nową notatkę do spaceru:', de: 'Gib neue Spaziergangsnotiz ein:' },
+    editEventPromptFoodNote: { ru: 'Введите новую заметку к кормлению:', en: 'Enter new feeding note:', uk: 'Введіть нову нотатку до годування:', bg: 'Въведете нова бележка за храненето:', pl: 'Wpisz nową notatkę do karmienia:', de: 'Gib neue Fütterungsnotiz ein:' },
+    eventsFiltered: { ru: '📋 События ({petName}) — фильтр: {filter}:', en: '📋 Events ({petName}) — filter: {filter}:', uk: '📋 Події ({petName}) — фільтр: {filter}:', bg: '📋 Събития ({petName}) — филтър: {filter}:', pl: '📋 Zdarzenia ({petName}) — filtr: {filter}:', de: '📋 Ereignisse ({petName}) — Filter: {filter}:' },
+
     // ─── Delete pet ───
     deletePetButton: { ru: '🗑 Удалить питомца', en: '🗑 Delete pet', uk: '🗑 Видалити улюбленця', bg: '🗑 Изтрий любимец', pl: '🗑 Usuń zwierzę', de: '🗑 Haustier löschen' },
     deletePetConfirm: {

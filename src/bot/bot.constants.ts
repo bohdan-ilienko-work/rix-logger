@@ -28,4 +28,10 @@ export const MENU_CALLBACKS = {
     DELETE_PET: 'menu_delete_pet',
     DELETE_LAST_EVENT: 'menu_delete_last_event',
     CONFIRM_DELETE_PET: 'confirm_del_pet_',
+    EVT_FILTER_ALL: 'evt_filter_all',
+    EVT_FILTER_WALK: 'evt_filter_walk',
+    EVT_FILTER_FOOD: 'evt_filter_food',
+    EVT_FILTER_WEIGHT: 'evt_filter_weight',
+    EVT_FILTER_NOTE: 'evt_filter_note',
+    EVT_SORT_TOGGLE: 'evt_sort_toggle',
 } as const;
