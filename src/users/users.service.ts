@@ -9,6 +9,7 @@ export interface TelegramUserContactInput {
     firstName?: string;
     lastName?: string;
     phoneNumber?: string;
+    lang?: string;
 }
 
 @Injectable()
@@ -32,6 +33,7 @@ export class UsersService {
             existingUser.firstName = payload.firstName ?? existingUser.firstName;
             existingUser.lastName = payload.lastName ?? existingUser.lastName;
             existingUser.phoneNumber = payload.phoneNumber ?? existingUser.phoneNumber;
+            if (payload.lang) existingUser.lang = payload.lang;
             return this.usersRepository.save(existingUser);
         }
 
@@ -41,8 +43,16 @@ export class UsersService {
             firstName: payload.firstName ?? null,
             lastName: payload.lastName ?? null,
             phoneNumber: payload.phoneNumber ?? null,
+            lang: payload.lang ?? 'uk',
         });
 
+        return this.usersRepository.save(user);
+    }
+
+    async updateLang(telegramId: string, lang: string): Promise<User | null> {
+        const user = await this.findByTelegramId(telegramId);
+        if (!user) return null;
+        user.lang = lang;
         return this.usersRepository.save(user);
     }
 }

@@ -97,6 +97,27 @@ export class MiniappController {
         };
     }
 
+    @Get('me')
+    async getMe(@Req() req: AuthedRequest) {
+        const user = await this.usersService.findByTelegramId(
+            String(req.telegramUser.id),
+        );
+        return { lang: user?.lang ?? 'uk' };
+    }
+
+    @Patch('me/lang')
+    async updateMyLang(
+        @Req() req: AuthedRequest,
+        @Body() body: { lang: string },
+    ) {
+        const lang = ['ru', 'en', 'uk'].includes(body.lang) ? body.lang : 'uk';
+        await this.usersService.updateLang(
+            String(req.telegramUser.id),
+            lang,
+        );
+        return { lang };
+    }
+
     @Get('events/today')
     async getTodayEvents(@Req() req: AuthedRequest) {
         const user = await this.usersService.findByTelegramId(

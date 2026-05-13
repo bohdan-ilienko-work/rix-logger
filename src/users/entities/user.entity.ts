@@ -13,35 +13,38 @@ import { PetEvent } from '../../pet-events/entities/pet-event.entity';
 @Entity({ name: 'users' })
 export class User {
     @PrimaryGeneratedColumn('uuid')
-    id: string;
+    id!: string;
 
     @Column({ type: 'varchar', unique: true })
-    telegramId: string;
+    telegramId!: string;
 
     @Column({ type: 'varchar', nullable: true })
-    username: string | null;
+    username!: string | null;
 
     @Column({ type: 'varchar', nullable: true })
-    firstName: string | null;
+    firstName!: string | null;
 
     @Column({ type: 'varchar', nullable: true })
-    lastName: string | null;
+    lastName!: string | null;
 
     @Column({ type: 'varchar', nullable: true })
-    phoneNumber: string | null;
+    phoneNumber!: string | null;
+
+    @Column({ type: 'varchar', length: 10, default: 'uk' })
+    lang!: string;
 
     @OneToMany(() => Pet, (pet) => pet.owner)
-    pets: Pet[];
+    pets!: Pet[];
 
     @OneToMany(() => PetMember, (membership) => membership.user)
-    petMemberships: PetMember[];
+    petMemberships!: PetMember[];
 
     @OneToMany(() => PetEvent, (event) => event.owner)
-    petEvents: PetEvent[];
+    petEvents!: PetEvent[];
 
     @CreateDateColumn({ type: 'timestamptz' })
-    createdAt: Date;
+    createdAt!: Date;
 
     @UpdateDateColumn()
-    updatedAt: Date;
+    updatedAt!: Date;
 }
