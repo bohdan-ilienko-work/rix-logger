@@ -110,7 +110,7 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Body() body: { lang: string },
     ) {
-        const lang = ['ru', 'en', 'uk'].includes(body.lang) ? body.lang : 'uk';
+        const lang = ['ru', 'en', 'uk', 'bg', 'pl', 'de'].includes(body.lang) ? body.lang : 'uk';
         await this.usersService.updateLang(
             String(req.telegramUser.id),
             lang,

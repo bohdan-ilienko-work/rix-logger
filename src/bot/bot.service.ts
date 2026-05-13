@@ -1127,7 +1127,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
                 if (cbData.startsWith('set_lang_')) {
                     const newLang = cbData.slice('set_lang_'.length) as Lang;
-                    if (!['ru', 'en', 'uk'].includes(newLang)) {
+                    if (!['ru', 'en', 'uk', 'bg', 'pl', 'de'].includes(newLang)) {
                         await ctx.answerCallbackQuery();
                         return;
                     }
@@ -1509,6 +1509,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                     { text: '🇷🇺 Русский', callback_data: 'set_lang_ru' },
                     { text: '🇬🇧 English', callback_data: 'set_lang_en' },
                     { text: '🇺🇦 Українська', callback_data: 'set_lang_uk' },
+                ], [
+                    { text: '🇧🇬 Български', callback_data: 'set_lang_bg' },
+                    { text: '🇵🇱 Polski', callback_data: 'set_lang_pl' },
+                    { text: '🇩🇪 Deutsch', callback_data: 'set_lang_de' },
                 ]],
             },
         });

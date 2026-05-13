@@ -66,7 +66,7 @@ export class PetEventsService {
                         .orWhere('event.ownerId = :userId', { userId: user.id });
                 }),
             )
-            .orderBy('event.createdAt', 'ASC')
+            .orderBy('event.createdAt', 'DESC')
             .getMany();
     }
 
@@ -87,7 +87,7 @@ export class PetEventsService {
                         .orWhere('event.ownerId = :userId', { userId: owner.id });
                 }),
             )
-            .orderBy('event.createdAt', 'ASC')
+            .orderBy('event.createdAt', 'DESC')
             .getMany();
     }
 
