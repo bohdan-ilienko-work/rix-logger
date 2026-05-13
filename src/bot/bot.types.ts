@@ -59,6 +59,25 @@ export interface EditPetSession {
     field?: 'name' | 'age' | 'breed' | 'weightKg' | 'note';
 }
 
+export enum FoodLogStep {
+    WAITING_FOOD_TYPE = 'WAITING_FOOD_TYPE',
+    WAITING_AMOUNT = 'WAITING_AMOUNT',
+    WAITING_APPETITE = 'WAITING_APPETITE',
+    WAITING_NOTE = 'WAITING_NOTE',
+}
+
+export interface FoodLogData {
+    foodType?: string;
+    amount?: string;
+    appetite?: string;
+    note?: string | null;
+}
+
+export interface FoodLogSession {
+    step: FoodLogStep;
+    data: FoodLogData;
+}
+
 export interface EditEventSession {
     eventId: string;
 }

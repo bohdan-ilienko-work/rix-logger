@@ -22,6 +22,8 @@ import {
     EditPetSession,
     EditPetStep,
     EditEventSession,
+    FoodLogSession,
+    FoodLogStep,
 } from './bot.types';
 import {
     CANCEL_KEYWORD,
@@ -46,6 +48,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly editPetSessions = new Map<string, EditPetSession>();
     private readonly editEventSessions = new Map<string, EditEventSession>();
     private readonly awaitingPetAvatar = new Map<string, string>(); // telegramId → petId
+    private readonly foodLogSessions = new Map<string, FoodLogSession>();
 
     constructor(
         private readonly configService: ConfigService,
@@ -64,6 +67,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private isCancel(text: string): boolean {
         const lc = text.toLowerCase();
         return lc === 'отмена' || lc === 'cancel' || lc === 'скасувати';
+    }
+
+    /** Send a message with an inline ❌ Cancel button */
+    private async replyWithCancel(ctx: BotContext, text: string, lang: Lang): Promise<void> {
+        await ctx.reply(text, {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: t('cancelBtn', lang), callback_data: 'cancel_input' },
+                ]],
+            },
+        });
     }
 
     /** Check if text matches skip keyword in any supported language */
@@ -85,14 +99,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             FOOD: 'replyFood',
             WEIGHT: 'replyWeight',
             NOTE: 'replyNote',
+            EVENTS: 'replyEvents',
             STATS: 'replyStats',
             PETS: 'replyPets',
-            INVITE: 'replyInvite',
+            MEMBERS: 'replyMembers',
             MINIAPP: 'replyMiniapp',
             LANG: 'replyLang',
         };
         for (const [btnKey, i18nKey] of Object.entries(map)) {
-            for (const lang of ['ru', 'en', 'uk'] as Lang[]) {
+            for (const lang of ['ru', 'en', 'uk', 'bg', 'pl', 'de'] as Lang[]) {
                 if (t(i18nKey as any, lang) === text) return btnKey as keyof typeof REPLY_BUTTONS | 'LANG';
             }
         }
@@ -589,6 +604,12 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        const foodSession = this.foodLogSessions.get(telegramId);
+        if (foodSession) {
+            await this.handleFoodLogInput(ctx, telegramId, text, foodSession);
+            return;
+        }
+
         const onboarding = this.onboardingSessions.get(telegramId);
         if (!onboarding) {
             await ctx.reply(t('errorUnknownMessage', this.getLang(ctx)));
@@ -610,7 +631,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         const role = await this.petsService.getUserRoleForPet(user, pet);
         if (role !== PetMemberRole.OWNER) { await ctx.reply(t('editPetOnlyOwner', lang)); return; }
         this.editPetSessions.set(telegramId, { step: EditPetStep.WAITING_FIELD_CHOICE, petId: pet.id });
-        await ctx.reply(t('editPetPrompt', lang, { petName: pet.name, cancel: t('cancelKeyword', lang) }));
+        await this.replyWithCancel(ctx, t('editPetPrompt', lang, { petName: pet.name }), lang);
     }
 
     private async handleEditPetInput(ctx: BotContext, telegramId: string, text: string, session: EditPetSession): Promise<void> {
@@ -634,7 +655,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             if (!field) { await ctx.reply(t('editPetInvalidChoice', lang)); return; }
             this.editPetSessions.set(telegramId, { ...session, step: EditPetStep.WAITING_NEW_VALUE, field });
             const labelKeys: Record<string, string> = { name: 'editPetFieldName', age: 'editPetFieldAge', breed: 'editPetFieldBreed', weightKg: 'editPetFieldWeight', note: 'editPetFieldNote' };
-            await ctx.reply(t('editPetEnterNewValue', lang, { field: t(labelKeys[field] as any, lang), cancel: t('cancelKeyword', lang) }));
+            await this.replyWithCancel(ctx, t('editPetEnterNewValue', lang, { field: t(labelKeys[field] as any, lang) }), lang);
             return;
         }
 
@@ -701,8 +722,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     ): Promise<void> {
         const lang = this.getLang(ctx);
         const skip = t('skipKeyword', lang);
-        const cancel = t('cancelKeyword', lang);
-
         switch (session.step) {
             case OnboardingStep.WAITING_CONTACT: {
                 await ctx.reply(t('onboardingWaitContact', lang));
@@ -848,7 +867,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         if (pendingEvent.type === PetEventType.WEIGHT) {
             const weight = this.parseWeight(text);
             if (weight === null) {
-                await ctx.reply(t('pendingWeightParseError', lang, { cancel: t('cancelKeyword', lang) }));
+                await this.replyWithCancel(ctx, t('pendingWeightParseError', lang), lang);
                 return;
             }
 
@@ -867,7 +886,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
         if (pendingEvent.type === PetEventType.NOTE) {
             if (!text) {
-                await ctx.reply(t('pendingNoteEmpty', lang, { cancel: t('cancelKeyword', lang) }));
+                await this.replyWithCancel(ctx, t('pendingNoteEmpty', lang), lang);
                 return;
             }
 
@@ -913,7 +932,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const cancel = t('cancelKeyword', lang);
         const now = t('timeNow', lang);
         const skip = t('skipKeyword', lang);
 
@@ -921,7 +939,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             case WalkLogStep.WAITING_DURATION_MINUTES: {
                 const durationMinutes = this.parseDurationMinutes(text);
                 if (durationMinutes === null) {
-                    await ctx.reply(t('walkDurationParseError', lang, { cancel }));
+                    await this.replyWithCancel(ctx, t('walkDurationParseError', lang), lang);
                     return;
                 }
 
@@ -930,14 +948,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                     data: { ...walkSession.data, durationMinutes },
                 });
 
-                await ctx.reply(t('walkAskEndTime', lang, { now, cancel }));
+                await this.replyWithCancel(ctx, t('walkAskEndTime', lang, { now }), lang);
                 return;
             }
 
             case WalkLogStep.WAITING_END_TIME: {
                 const endTime = this.normalizeTime(text);
                 if (!endTime) {
-                    await ctx.reply(t('walkEndTimeParseError', lang, { now, cancel }));
+                    await this.replyWithCancel(ctx, t('walkEndTimeParseError', lang, { now }), lang);
                     return;
                 }
 
@@ -953,7 +971,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             case WalkLogStep.WAITING_POOP: {
                 const pooped = this.parseYesNo(text, lang);
                 if (pooped === null) {
-                    await ctx.reply(t('walkYesNoParseError', lang, { cancel }));
+                    await this.replyWithCancel(ctx, t('walkYesNoParseError', lang), lang);
                     return;
                 }
 
@@ -969,7 +987,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             case WalkLogStep.WAITING_PEE: {
                 const peed = this.parseYesNo(text, lang);
                 if (peed === null) {
-                    await ctx.reply(t('walkYesNoParseError', lang, { cancel }));
+                    await this.replyWithCancel(ctx, t('walkYesNoParseError', lang), lang);
                     return;
                 }
 
@@ -1062,8 +1080,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const cancel = t('cancelKeyword', lang);
-
         switch (ctx.callbackQuery.data) {
             case MENU_CALLBACKS.WALK: {
                 this.pendingEventSessions.delete(telegramId);
@@ -1073,33 +1089,29 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 });
 
                 await ctx.answerCallbackQuery({ text: t('cbWalkStartToast', lang) });
-                await ctx.reply(t('walkAskDuration', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('walkAskDuration', lang), lang);
                 return;
             }
 
             case MENU_CALLBACKS.FOOD: {
-                await this.petEventsService.createEvent({
-                    owner: user,
-                    pet,
-                    type: PetEventType.FOOD,
-                    value: { foodType: t('cbFoodQuickValue', lang), amount: '', appetite: 'good', note: null } as FoodEventValue,
-                });
+                this.pendingEventSessions.delete(telegramId);
+                this.foodLogSessions.set(telegramId, { step: FoodLogStep.WAITING_FOOD_TYPE, data: {} });
                 await ctx.answerCallbackQuery({ text: t('cbFoodRecordedToast', lang) });
-                await ctx.reply(t('cbFoodRecordedMessage', lang));
+                await this.replyWithCancel(ctx, t('foodAskType', lang), lang);
                 return;
             }
 
             case MENU_CALLBACKS.WEIGHT: {
                 this.pendingEventSessions.set(telegramId, { type: PetEventType.WEIGHT });
                 await ctx.answerCallbackQuery();
-                await ctx.reply(t('cbWeightAsk', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('cbWeightAsk', lang), lang);
                 return;
             }
 
             case MENU_CALLBACKS.NOTE: {
                 this.pendingEventSessions.set(telegramId, { type: PetEventType.NOTE });
                 await ctx.answerCallbackQuery();
-                await ctx.reply(t('cbNoteAsk', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('cbNoteAsk', lang), lang);
                 return;
             }
 
@@ -1107,6 +1119,24 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 const events = await this.petEventsService.getTodayEventsForUser(user);
                 await ctx.answerCallbackQuery();
                 await ctx.reply(this.buildTodayStats(events, lang));
+                return;
+            }
+
+            case MENU_CALLBACKS.STATS_7D: {
+                const since = new Date();
+                since.setDate(since.getDate() - 7);
+                const events7d = await this.petEventsService.getEventsForUserSince(user, since);
+                await ctx.answerCallbackQuery();
+                await ctx.reply(this.buildPeriodStats(events7d, 'statsTitle7d', lang));
+                return;
+            }
+
+            case MENU_CALLBACKS.STATS_30D: {
+                const since = new Date();
+                since.setDate(since.getDate() - 30);
+                const events30d = await this.petEventsService.getEventsForUserSince(user, since);
+                await ctx.answerCallbackQuery();
+                await ctx.reply(this.buildPeriodStats(events30d, 'statsTitle30d', lang));
                 return;
             }
 
@@ -1118,7 +1148,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 }
                 this.editPetSessions.set(telegramId, { step: EditPetStep.WAITING_FIELD_CHOICE, petId: pet.id });
                 await ctx.answerCallbackQuery();
-                await ctx.reply(t('editPetPrompt', lang, { petName: pet.name, cancel }));
+                await this.replyWithCancel(ctx, t('editPetPrompt', lang, { petName: pet.name }), lang);
                 return;
             }
 
@@ -1132,6 +1162,27 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 await this.petEventsService.deleteEvent(lastEvent);
                 await ctx.answerCallbackQuery({ text: t('cbLastEventDeletedToast', lang) });
                 await ctx.reply(t('cbLastEventDeletedMessage', lang, { type: lastEvent.type }));
+                return;
+            }
+
+            case MENU_CALLBACKS.INVITE: {
+                const role = await this.petsService.getUserRoleForPet(user, pet);
+                if (role !== PetMemberRole.OWNER) {
+                    await ctx.answerCallbackQuery({ text: t('inviteOnlyOwner', lang) });
+                    return;
+                }
+                await ctx.answerCallbackQuery();
+                await ctx.reply(t('inviteRolePrompt', lang), {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: 'CAREGIVER', callback_data: 'inv_role_caregiver' },
+                            { text: 'OBSERVER', callback_data: 'inv_role_observer' },
+                        ], [
+                            { text: 'TRAINER', callback_data: 'inv_role_trainer' },
+                            { text: 'VET', callback_data: 'inv_role_vet' },
+                        ]],
+                    },
+                });
                 return;
             }
 
@@ -1166,7 +1217,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                     }
                     this.editPetSessions.set(telegramId, { step: EditPetStep.WAITING_FIELD_CHOICE, petId });
                     await ctx.answerCallbackQuery();
-                    await ctx.reply(t('editPetPrompt', lang, { petName: targetPet.name, cancel }));
+                    await this.replyWithCancel(ctx, t('editPetPrompt', lang, { petName: targetPet.name }), lang);
                     return;
                 }
 
@@ -1184,7 +1235,213 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                     }
                     this.awaitingPetAvatar.set(telegramId, petId);
                     await ctx.answerCallbackQuery();
-                    await ctx.reply(t('cbAvatarAskPhoto', lang, { petName: targetPet.name, cancel }));
+                    await ctx.reply(t('cbAvatarAskPhoto', lang, { petName: targetPet.name }), {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: t('cancelBtn', lang), callback_data: 'cancel_avatar' },
+                            ]],
+                        },
+                    });
+                    return;
+                }
+
+                // Delete event — ask confirmation
+                if (cbData.startsWith('del_evt_')) {
+                    const eventId = cbData.slice('del_evt_'.length);
+                    const evToDelete = await this.petEventsService.findById(eventId);
+                    if (!evToDelete) {
+                        await ctx.answerCallbackQuery({ text: t('eventNotFoundDel', lang) });
+                        return;
+                    }
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('eventDeleteConfirm', lang), {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: t('eventDeleteYes', lang), callback_data: `yes_del_evt_${eventId}` },
+                                { text: t('eventDeleteNo', lang), callback_data: 'no_del_evt' },
+                            ]],
+                        },
+                    });
+                    return;
+                }
+
+                // Confirm event deletion
+                if (cbData.startsWith('yes_del_evt_')) {
+                    const eventId = cbData.slice('yes_del_evt_'.length);
+                    const evToDelete = await this.petEventsService.findById(eventId);
+                    if (!evToDelete) {
+                        await ctx.answerCallbackQuery({ text: t('eventNotFoundDel', lang) });
+                        return;
+                    }
+                    await this.petEventsService.deleteEvent(evToDelete);
+                    await ctx.answerCallbackQuery({ text: t('eventDeleted', lang) });
+                    await ctx.reply(t('eventDeleted', lang));
+                    return;
+                }
+
+                if (cbData === 'no_del_evt') {
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('eventDeleteCancelled', lang));
+                    return;
+                }
+
+                // Confirm delete pet
+                if (cbData.startsWith(MENU_CALLBACKS.CONFIRM_DELETE_PET)) {
+                    const petId = cbData.slice(MENU_CALLBACKS.CONFIRM_DELETE_PET.length);
+                    const targetPet = await this.petsService.findById(petId);
+                    if (!targetPet) {
+                        await ctx.answerCallbackQuery({ text: t('cbPetNotFound', lang) });
+                        return;
+                    }
+                    const role = await this.petsService.getUserRoleForPet(user, targetPet);
+                    if (role !== PetMemberRole.OWNER) {
+                        await ctx.answerCallbackQuery({ text: t('cbOnlyOwner', lang) });
+                        return;
+                    }
+                    // Show confirmation
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('deletePetConfirm', lang, { petName: targetPet.name }), {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: t('deletePetConfirmBtn', lang), callback_data: `do_del_pet_${petId}` },
+                                { text: t('deletePetCancelBtn', lang), callback_data: 'cancel_del_pet' },
+                            ]],
+                        },
+                    });
+                    return;
+                }
+
+                // Actually delete pet after confirmation
+                if (cbData.startsWith('do_del_pet_')) {
+                    const petId = cbData.slice('do_del_pet_'.length);
+                    const targetPet = await this.petsService.findById(petId);
+                    if (!targetPet) {
+                        await ctx.answerCallbackQuery({ text: t('cbPetNotFound', lang) });
+                        return;
+                    }
+                    const role = await this.petsService.getUserRoleForPet(user, targetPet);
+                    if (role !== PetMemberRole.OWNER) {
+                        await ctx.answerCallbackQuery({ text: t('cbOnlyOwner', lang) });
+                        return;
+                    }
+                    const petName = targetPet.name;
+                    await this.petsService.deletePet(targetPet);
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('deletePetSuccess', lang, { petName }));
+                    await this.sendMainMenu(ctx, lang);
+                    return;
+                }
+
+                if (cbData === 'cancel_del_pet') {
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('deletePetCancelled', lang));
+                    return;
+                }
+
+                if (cbData === 'cancel_avatar') {
+                    this.awaitingPetAvatar.delete(telegramId);
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('avatarSetCancelled', lang));
+                    await this.sendMainMenu(ctx, lang);
+                    return;
+                }
+
+                // Universal cancel for any active input session
+                if (cbData === 'cancel_input') {
+                    let cancelled = false;
+                    if (this.walkLogSessions.has(telegramId)) {
+                        this.walkLogSessions.delete(telegramId);
+                        await ctx.reply(t('walkCancelled', lang));
+                        cancelled = true;
+                    } else if (this.foodLogSessions.has(telegramId)) {
+                        this.foodLogSessions.delete(telegramId);
+                        await ctx.reply(t('foodCancelled', lang));
+                        cancelled = true;
+                    } else if (this.pendingEventSessions.has(telegramId)) {
+                        this.pendingEventSessions.delete(telegramId);
+                        await ctx.reply(t('pendingEventCancelled', lang));
+                        cancelled = true;
+                    } else if (this.editPetSessions.has(telegramId)) {
+                        this.editPetSessions.delete(telegramId);
+                        await ctx.reply(t('editPetCancelled', lang));
+                        cancelled = true;
+                    }
+                    await ctx.answerCallbackQuery();
+                    if (cancelled) await this.sendMainMenu(ctx, lang);
+                    return;
+                }
+
+                // Remove member — ask confirmation
+                if (cbData.startsWith('rm_member_')) {
+                    const membershipId = cbData.slice('rm_member_'.length);
+                    const role = await this.petsService.getUserRoleForPet(user, pet);
+                    if (role !== PetMemberRole.OWNER) {
+                        await ctx.answerCallbackQuery({ text: t('cbOnlyOwner', lang) });
+                        return;
+                    }
+                    const members = await this.petsService.listMembers(pet);
+                    const target = members.find((m) => m.id === membershipId);
+                    if (!target) {
+                        await ctx.answerCallbackQuery({ text: t('memberNotFound', lang) });
+                        return;
+                    }
+                    const mName = target.user.firstName ?? target.user.username ?? target.user.telegramId;
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('memberRemoveConfirm', lang, { name: mName }), {
+                        reply_markup: {
+                            inline_keyboard: [[
+                                { text: t('memberRemoveYes', lang), callback_data: `yes_rm_member_${membershipId}` },
+                                { text: t('memberRemoveNo', lang), callback_data: 'no_rm_member' },
+                            ]],
+                        },
+                    });
+                    return;
+                }
+
+                // Confirm member removal
+                if (cbData.startsWith('yes_rm_member_')) {
+                    const membershipId = cbData.slice('yes_rm_member_'.length);
+                    const role = await this.petsService.getUserRoleForPet(user, pet);
+                    if (role !== PetMemberRole.OWNER) {
+                        await ctx.answerCallbackQuery({ text: t('cbOnlyOwner', lang) });
+                        return;
+                    }
+                    const members = await this.petsService.listMembers(pet);
+                    const target = members.find((m) => m.id === membershipId);
+                    if (!target) {
+                        await ctx.answerCallbackQuery({ text: t('memberNotFound', lang) });
+                        return;
+                    }
+                    await this.petsService.removeMember(pet, target.user.id);
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('memberRemoved', lang));
+                    return;
+                }
+
+                if (cbData === 'no_rm_member') {
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('memberRemoveCancelled', lang));
+                    return;
+                }
+
+                // Invite with role selection
+                if (cbData.startsWith('inv_role_')) {
+                    const roleStr = cbData.slice('inv_role_'.length);
+                    const inviteRole = this.parseMemberRole(roleStr);
+                    if (!inviteRole) {
+                        await ctx.answerCallbackQuery();
+                        return;
+                    }
+                    const role = await this.petsService.getUserRoleForPet(user, pet);
+                    if (role !== PetMemberRole.OWNER) {
+                        await ctx.answerCallbackQuery({ text: t('inviteOnlyOwner', lang) });
+                        return;
+                    }
+                    const invite = await this.petsService.createInvite({ pet, role: inviteRole, tag: null, expiresAt: null });
+                    const botUsername = this.configService.get<string>('bot.username')?.trim() ?? '';
+                    const link = `https://t.me/${botUsername}?start=join_${invite.id}`;
+                    await ctx.answerCallbackQuery();
+                    await ctx.reply(t('inviteLinkMessage', lang, { petName: pet.name, link }));
                     return;
                 }
 
@@ -1231,38 +1488,44 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
         const lang = this.getLang(ctx, user);
         const pet = await this.petsService.findFirstByUser(user);
-        const cancel = t('cancelKeyword', lang);
-
         switch (btnKey) {
             case 'WALK': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
                 this.pendingEventSessions.delete(telegramId);
                 this.walkLogSessions.set(telegramId, { step: WalkLogStep.WAITING_DURATION_MINUTES, data: {} });
-                await ctx.reply(t('walkAskDuration', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('walkAskDuration', lang), lang);
                 return true;
             }
             case 'FOOD': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
-                await this.petEventsService.createEvent({ owner: user, pet, type: PetEventType.FOOD, value: { foodType: t('cbFoodQuickValue', lang), amount: '', appetite: 'good', note: null } as FoodEventValue });
-                await ctx.reply(t('replyFoodRecorded', lang));
+                this.pendingEventSessions.delete(telegramId);
+                this.foodLogSessions.set(telegramId, { step: FoodLogStep.WAITING_FOOD_TYPE, data: {} });
+                await this.replyWithCancel(ctx, t('foodAskType', lang), lang);
                 return true;
             }
             case 'WEIGHT': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
                 this.pendingEventSessions.set(telegramId, { type: PetEventType.WEIGHT });
-                await ctx.reply(t('replyWeightAsk', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('replyWeightAsk', lang), lang);
                 return true;
             }
             case 'NOTE': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
                 this.pendingEventSessions.set(telegramId, { type: PetEventType.NOTE });
-                await ctx.reply(t('replyNoteAsk', lang, { cancel }));
+                await this.replyWithCancel(ctx, t('replyNoteAsk', lang), lang);
                 return true;
             }
             case 'STATS': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
-                const events = await this.petEventsService.getTodayEventsForUser(user);
-                await ctx.reply(this.buildTodayStats(events, lang));
+                await ctx.reply(t('statsChoosePeriod', lang), {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: t('statsBtnToday', lang), callback_data: MENU_CALLBACKS.STATS_TODAY },
+                            { text: t('statsBtn7d', lang), callback_data: MENU_CALLBACKS.STATS_7D },
+                            { text: t('statsBtn30d', lang), callback_data: MENU_CALLBACKS.STATS_30D },
+                        ]],
+                    },
+                });
                 return true;
             }
             case 'PETS': {
@@ -1286,6 +1549,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                         buttons.push([
                             { text: t('editPetButton', lang), callback_data: `edit_pet_${p.id}` },
                             { text: t('avatarButton', lang), callback_data: `avatar_pet_${p.id}` },
+                        ]);
+                        buttons.push([
+                            { text: t('deletePetButton', lang), callback_data: `${MENU_CALLBACKS.CONFIRM_DELETE_PET}${p.id}` },
                         ]);
                     }
 
@@ -1313,17 +1579,61 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                 }
                 return true;
             }
-            case 'INVITE': {
+            case 'MEMBERS': {
                 if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
+                const members = await this.petsService.listMembers(pet);
                 const role = await this.petsService.getUserRoleForPet(user, pet);
-                if (role !== PetMemberRole.OWNER) {
-                    await ctx.reply(t('inviteOnlyOwner', lang));
+                const lines = [t('membersTitle', lang, { petName: pet.name })];
+                if (members.length === 0) {
+                    lines.push(t('membersEmpty', lang));
+                } else {
+                    for (const m of members) {
+                        const memberName = m.user?.firstName ?? m.user?.username ?? m.user?.telegramId ?? '?';
+                        lines.push(t('memberLine', lang, { name: memberName, role: m.role }));
+                        if (m.tag) lines.push(t('memberTagLine', lang, { tag: m.tag }));
+                    }
+                }
+                const memberButtons: { text: string; callback_data: string }[][] = [];
+                if (role === PetMemberRole.OWNER) {
+                    memberButtons.push([
+                        { text: t('membersInviteButton', lang), callback_data: MENU_CALLBACKS.INVITE },
+                    ]);
+                    // Add remove buttons for non-owner members
+                    for (const m of members) {
+                        if (m.role !== PetMemberRole.OWNER && m.user) {
+                            const mName = m.user.firstName ?? m.user.username ?? m.user.telegramId;
+                            memberButtons.push([
+                                { text: `${t('membersRemoveButton', lang)} ${mName}`, callback_data: `rm_member_${m.id}` },
+                            ]);
+                        }
+                    }
+                }
+                await ctx.reply(lines.join('\n'), {
+                    reply_markup: memberButtons.length ? { inline_keyboard: memberButtons } : undefined,
+                });
+                return true;
+            }
+            case 'EVENTS': {
+                if (!pet) { await ctx.reply(t('addPetFirst', lang)); return true; }
+                const recentEvents = await this.petEventsService.getTodayEventsForUser(user);
+                if (recentEvents.length === 0) {
+                    await ctx.reply(t('eventsEmpty', lang));
                     return true;
                 }
-                const invite = await this.petsService.createInvite({ pet, role: PetMemberRole.CAREGIVER, tag: null, expiresAt: null });
-                const botUsername = this.configService.get<string>('bot.username')?.trim() ?? '';
-                const link = `https://t.me/${botUsername}?start=join_${invite.id}`;
-                await ctx.reply(t('inviteLinkMessage', lang, { petName: pet.name, link }));
+                const header = t('eventsTitle', lang, { petName: pet.name });
+                const eventLines: string[] = [header];
+                const eventButtons: { text: string; callback_data: string }[][] = [];
+                for (const ev of recentEvents.slice(-10).reverse()) {
+                    const label = this.getEventLabel(ev, lang);
+                    const time = new Date(ev.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    eventLines.push(`${time} — ${label}`);
+                    eventButtons.push([
+                        { text: `${t('eventDeleteButton', lang)} (${time} ${this.getEventTypeEmoji(ev.type)})`, callback_data: `del_evt_${ev.id}` },
+                    ]);
+                }
+                await ctx.reply(eventLines.join('\n'), {
+                    reply_markup: eventButtons.length ? { inline_keyboard: eventButtons } : undefined,
+                });
                 return true;
             }
             case 'MINIAPP': {
@@ -1356,14 +1666,187 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         const replyKeyboard = new Keyboard()
             .text(t('replyWalk', l)).text(t('replyFood', l)).row()
             .text(t('replyWeight', l)).text(t('replyNote', l)).row()
-            .text(t('replyStats', l)).text(t('replyPets', l)).row()
-            .text(t('replyInvite', l)).text(t('replyMiniapp', l)).row()
-            .text(t('replyLang', l))
+            .text(t('replyEvents', l)).text(t('replyStats', l)).row()
+            .text(t('replyPets', l)).text(t('replyMembers', l)).row()
+            .text(t('replyMiniapp', l)).text(t('replyLang', l))
             .resized().persistent();
 
         await ctx.reply(t('mainMenuPrompt', l), {
             reply_markup: replyKeyboard,
         });
+    }
+
+    private async handleFoodLogInput(
+        ctx: BotContext,
+        telegramId: string,
+        text: string,
+        session: FoodLogSession,
+    ): Promise<void> {
+        const user = await this.usersService.findByTelegramId(telegramId);
+        const lang = this.getLang(ctx, user);
+        if (!user) {
+            this.foodLogSessions.delete(telegramId);
+            await ctx.reply(t('pendingEventStartFirst', lang));
+            return;
+        }
+
+        const pet = await this.petsService.findFirstByUser(user);
+        if (!pet) {
+            this.foodLogSessions.delete(telegramId);
+            await ctx.reply(t('pendingEventNoPets', lang));
+            return;
+        }
+
+        if (this.isCancel(text)) {
+            this.foodLogSessions.delete(telegramId);
+            await ctx.reply(t('foodCancelled', lang));
+            await this.sendMainMenu(ctx, lang);
+            return;
+        }
+
+        const skip = t('skipKeyword', lang);
+
+        switch (session.step) {
+            case FoodLogStep.WAITING_FOOD_TYPE: {
+                this.foodLogSessions.set(telegramId, {
+                    step: FoodLogStep.WAITING_AMOUNT,
+                    data: { ...session.data, foodType: text.trim() },
+                });
+                await ctx.reply(t('foodAskAmount', lang, { skip }));
+                return;
+            }
+            case FoodLogStep.WAITING_AMOUNT: {
+                this.foodLogSessions.set(telegramId, {
+                    step: FoodLogStep.WAITING_APPETITE,
+                    data: { ...session.data, amount: this.normalizeOptionalText(text) ?? '' },
+                });
+                await ctx.reply(t('foodAskAppetite', lang, { skip }));
+                return;
+            }
+            case FoodLogStep.WAITING_APPETITE: {
+                const appetite = this.parseAppetite(text, lang);
+                this.foodLogSessions.set(telegramId, {
+                    step: FoodLogStep.WAITING_NOTE,
+                    data: { ...session.data, appetite: appetite ?? 'good' },
+                });
+                await ctx.reply(t('foodAskNote', lang, { skip }));
+                return;
+            }
+            case FoodLogStep.WAITING_NOTE: {
+                const finalData = {
+                    ...session.data,
+                    note: this.normalizeOptionalText(text),
+                };
+
+                if (!finalData.foodType) {
+                    this.foodLogSessions.delete(telegramId);
+                    await ctx.reply(t('foodSaveError', lang));
+                    await this.sendMainMenu(ctx, lang);
+                    return;
+                }
+
+                const foodValue: FoodEventValue = {
+                    foodType: finalData.foodType,
+                    amount: finalData.amount ?? '',
+                    appetite: (finalData.appetite ?? 'good') as FoodEventValue['appetite'],
+                    note: finalData.note ?? null,
+                };
+
+                await this.petEventsService.createEvent({
+                    owner: user,
+                    pet,
+                    type: PetEventType.FOOD,
+                    value: foodValue,
+                });
+
+                this.foodLogSessions.delete(telegramId);
+                await ctx.reply(
+                    t('foodSaved', lang, {
+                        type: finalData.foodType,
+                        amount: finalData.amount || '—',
+                        appetite: finalData.appetite ?? 'good',
+                    }),
+                );
+                await this.sendMainMenu(ctx, lang);
+                return;
+            }
+            default: {
+                this.foodLogSessions.delete(telegramId);
+                await ctx.reply(t('foodSaveError', lang));
+                await this.sendMainMenu(ctx, lang);
+            }
+        }
+    }
+
+    private parseAppetite(raw: string, lang: Lang): string | null {
+        if (this.isSkip(raw)) return null;
+        const lc = raw.trim().toLowerCase();
+        // Check all languages for good/average/poor
+        for (const l of ['ru', 'en', 'uk', 'bg', 'pl', 'de'] as Lang[]) {
+            if (lc === t('foodAppetiteGood', l).toLowerCase()) return 'good';
+            if (lc === t('foodAppetiteAvg', l).toLowerCase()) return 'average';
+            if (lc === t('foodAppetitePoor', l).toLowerCase()) return 'poor';
+        }
+        // Fallback: accept english keywords
+        if (['good', 'ok', 'хороший', 'добре'].includes(lc)) return 'good';
+        if (['average', 'средний', 'средній', 'среден'].includes(lc)) return 'average';
+        if (['poor', 'bad', 'плохой', 'поганий', 'лош'].includes(lc)) return 'poor';
+        return null;
+    }
+
+    private getEventLabel(event: PetEvent, lang: Lang): string {
+        switch (event.type) {
+            case PetEventType.WALK: {
+                const val = event.value as WalkEventValue;
+                return `${t('eventWalkLabel', lang)} (${val.durationMinutes ?? '?'} min)`;
+            }
+            case PetEventType.FOOD: {
+                const val = event.value as FoodEventValue;
+                return `${t('eventFoodLabel', lang)}${val.foodType ? ` — ${val.foodType}` : ''}`;
+            }
+            case PetEventType.WEIGHT: {
+                const val = event.value as WeightEventValue;
+                return `${t('eventWeightLabel', lang)}: ${val.kg} kg`;
+            }
+            case PetEventType.NOTE: {
+                const val = event.value as NoteEventValue;
+                const preview = val.text?.slice(0, 40) ?? '';
+                return `${t('eventNoteLabel', lang)}: ${preview}${val.text && val.text.length > 40 ? '…' : ''}`;
+            }
+            default:
+                return event.type;
+        }
+    }
+
+    private getEventTypeEmoji(type: PetEventType): string {
+        switch (type) {
+            case PetEventType.WALK: return '🦮';
+            case PetEventType.FOOD: return '🍽';
+            case PetEventType.WEIGHT: return '⚖️';
+            case PetEventType.NOTE: return '📝';
+            default: return '📌';
+        }
+    }
+
+    private buildPeriodStats(events: PetEvent[], titleKey: string, lang: Lang): string {
+        const walkCount = events.filter((e) => e.type === PetEventType.WALK).length;
+        const foodCount = events.filter((e) => e.type === PetEventType.FOOD).length;
+        const weightEvents = events.filter((e) => e.type === PetEventType.WEIGHT);
+        const noteCount = events.filter((e) => e.type === PetEventType.NOTE).length;
+        const latestWeight = weightEvents.at(-1)?.value as WeightEventValue | undefined;
+        const totalWalkMin = events
+            .filter((e) => e.type === PetEventType.WALK)
+            .reduce((sum, e) => sum + ((e.value as WalkEventValue)?.durationMinutes ?? 0), 0);
+
+        return [
+            t(titleKey as any, lang),
+            t('statsWalks', lang, { v: walkCount }),
+            t('statsTotalWalkMin', lang, { v: totalWalkMin }),
+            t('statsFeedings', lang, { v: foodCount }),
+            t('statsWeightEntries', lang, { v: weightEvents.length }),
+            t('statsNotes', lang, { v: noteCount }),
+            t('statsLatestWeight', lang, { v: latestWeight ? `${latestWeight.kg}` : t('statsNoWeightData', lang) }),
+        ].join('\n');
     }
 
     private buildOnboardingSummary(pet: Pet, lang: Lang): string {
@@ -1513,7 +1996,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         const role = await this.petsService.getUserRoleForPet(user, pet);
         if (role !== PetMemberRole.OWNER) { await ctx.reply(t('setAvatarOnlyOwner', lang)); return; }
         this.awaitingPetAvatar.set(telegramId, pet.id);
-        await ctx.reply(t('cbAvatarAskPhoto', lang, { petName: pet.name, cancel: t('cancelKeyword', lang) }));
+        await ctx.reply(t('cbAvatarAskPhoto', lang, { petName: pet.name }), {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: t('cancelBtn', lang), callback_data: 'cancel_avatar' },
+                ]],
+            },
+        });
     }
 
     private async handleLangCommand(ctx: BotContext): Promise<void> {

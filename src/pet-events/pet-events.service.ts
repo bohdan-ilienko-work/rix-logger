@@ -105,6 +105,26 @@ export class PetEventsService {
         return events;
     }
 
+    async getEventsForUserSince(owner: User, since: Date): Promise<PetEvent[]> {
+        const events = await this.petEventsRepository
+            .createQueryBuilder('event')
+            .leftJoinAndSelect('event.pet', 'pet')
+            .leftJoin('event.images', 'images')
+            .addSelect(['images.id'])
+            .leftJoin('pet.memberships', 'membership')
+            .where('event.createdAt >= :since', { since })
+            .andWhere(
+                new Brackets((qb) => {
+                    qb.where('membership.userId = :userId', { userId: owner.id })
+                        .orWhere('event.ownerId = :userId', { userId: owner.id });
+                }),
+            )
+            .orderBy('event.createdAt', 'DESC')
+            .getMany();
+        this.logger.debug(`getEventsForUserSince user=${owner.id} since=${since.toISOString()} count=${events.length}`);
+        return events;
+    }
+
     // ─── Event images ───
 
     async addImage(event: PetEvent, data: Buffer, mime: string): Promise<EventImage> {
