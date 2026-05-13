@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -14,13 +14,17 @@ export interface TelegramUserContactInput {
 
 @Injectable()
 export class UsersService {
+    private readonly logger = new Logger(UsersService.name);
+
     constructor(
         @InjectRepository(User)
         private readonly usersRepository: Repository<User>,
     ) { }
 
     async findByTelegramId(telegramId: string): Promise<User | null> {
-        return this.usersRepository.findOne({ where: { telegramId } });
+        const user = await this.usersRepository.findOne({ where: { telegramId } });
+        this.logger.debug(`findByTelegramId tg=${telegramId} found=${!!user}`);
+        return user;
     }
 
     async createOrUpdateFromTelegramContact(
@@ -34,7 +38,9 @@ export class UsersService {
             existingUser.lastName = payload.lastName ?? existingUser.lastName;
             existingUser.phoneNumber = payload.phoneNumber ?? existingUser.phoneNumber;
             if (payload.lang) existingUser.lang = payload.lang;
-            return this.usersRepository.save(existingUser);
+            const saved = await this.usersRepository.save(existingUser);
+            this.logger.log(`Updated user tg=${payload.telegramId} id=${saved.id}`);
+            return saved;
         }
 
         const user = this.usersRepository.create({
@@ -46,13 +52,20 @@ export class UsersService {
             lang: payload.lang ?? 'uk',
         });
 
-        return this.usersRepository.save(user);
+        const saved = await this.usersRepository.save(user);
+        this.logger.log(`Created user tg=${payload.telegramId} id=${saved.id}`);
+        return saved;
     }
 
     async updateLang(telegramId: string, lang: string): Promise<User | null> {
         const user = await this.findByTelegramId(telegramId);
-        if (!user) return null;
+        if (!user) {
+            this.logger.warn(`updateLang: user not found tg=${telegramId}`);
+            return null;
+        }
         user.lang = lang;
-        return this.usersRepository.save(user);
+        const saved = await this.usersRepository.save(user);
+        this.logger.log(`updateLang tg=${telegramId} lang=${lang}`);
+        return saved;
     }
 }

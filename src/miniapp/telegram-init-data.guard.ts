@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 
@@ -11,6 +11,8 @@ export interface TelegramInitUser {
 
 @Injectable()
 export class TelegramInitDataGuard implements CanActivate {
+    private readonly logger = new Logger(TelegramInitDataGuard.name);
+
     constructor(private readonly configService: ConfigService) { }
 
     canActivate(context: ExecutionContext): boolean {
@@ -28,21 +30,28 @@ export class TelegramInitDataGuard implements CanActivate {
             const devUserId = this.configService.get<string>('miniapp.devUserId');
             if (!isProduction && devUserId) {
                 req.telegramUser = { id: Number(devUserId), first_name: 'Dev' };
+                this.logger.debug(`Auth bypass: dev user id=${devUserId}`);
                 return true;
             }
+            this.logger.warn('Auth rejected: no initData header and no dev bypass');
             return false;
         }
 
         const botToken = this.configService.get<string>('bot.token') ?? '';
         const valid = this.validateInitData(initData, botToken);
-        if (!valid) return false;
+        if (!valid) {
+            this.logger.warn('Auth rejected: invalid initData signature');
+            return false;
+        }
 
         const params = new URLSearchParams(initData);
         const userStr = params.get('user');
         if (userStr) {
             try {
                 req.telegramUser = JSON.parse(userStr) as TelegramInitUser;
+                this.logger.debug(`Auth OK: tgUser=${req.telegramUser.id} username=${req.telegramUser.username ?? '-'}`);
             } catch {
+                this.logger.warn('Auth rejected: failed to parse user JSON from initData');
                 return false;
             }
         }

@@ -4,6 +4,7 @@ import {
     Delete,
     ForbiddenException,
     Get,
+    Logger,
     Param,
     Patch,
     NotFoundException,
@@ -79,6 +80,8 @@ interface UpdateMemberDto {
 @Controller('miniapp')
 @UseGuards(TelegramInitDataGuard)
 export class MiniappController {
+    private readonly logger = new Logger(MiniappController.name);
+
     constructor(
         private readonly configService: ConfigService,
         private readonly usersService: UsersService,
@@ -99,9 +102,11 @@ export class MiniappController {
 
     @Get('me')
     async getMe(@Req() req: AuthedRequest) {
+        this.logger.log(`getMe tgUser=${req.telegramUser.id}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
+        this.logger.debug(`getMe result: found=${!!user}, lang=${user?.lang ?? 'uk'}`);
         return { lang: user?.lang ?? 'uk' };
     }
 
@@ -111,6 +116,7 @@ export class MiniappController {
         @Body() body: { lang: string },
     ) {
         const lang = ['ru', 'en', 'uk', 'bg', 'pl', 'de'].includes(body.lang) ? body.lang : 'uk';
+        this.logger.log(`updateMyLang tgUser=${req.telegramUser.id} lang=${lang}`);
         await this.usersService.updateLang(
             String(req.telegramUser.id),
             lang,
@@ -120,30 +126,36 @@ export class MiniappController {
 
     @Get('events/today')
     async getTodayEvents(@Req() req: AuthedRequest) {
+        this.logger.log(`getTodayEvents tgUser=${req.telegramUser.id}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
 
         if (!user) {
+            this.logger.warn(`getTodayEvents: user not found tgUser=${req.telegramUser.id}`);
             return [];
         }
 
         const events = await this.petEventsService.getTodayEventsForUser(user);
+        this.logger.debug(`getTodayEvents: ${events.length} events for user=${user.id}`);
 
         return events.map((e) => this.mapEvent(e));
     }
 
     @Get('pets')
     async getPets(@Req() req: AuthedRequest) {
+        this.logger.log(`getPets tgUser=${req.telegramUser.id}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
 
         if (!user) {
+            this.logger.warn(`getPets: user not found tgUser=${req.telegramUser.id}`);
             return [];
         }
 
         const pets = await this.petsService.findAllByUser(user);
+        this.logger.debug(`getPets: ${pets.length} pets for user=${user.id}`);
 
         return Promise.all(
             pets.map(async (pet) => {
@@ -170,11 +182,13 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Body() body: CreatePetDto,
     ) {
+        this.logger.log(`createPet tgUser=${req.telegramUser.id} name="${body.name}"`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
 
         if (!user) {
+            this.logger.warn(`createPet: user not found tgUser=${req.telegramUser.id}`);
             throw new NotFoundException('User not found. Complete onboarding in the bot first.');
         }
 
@@ -190,6 +204,8 @@ export class MiniappController {
             note: body.note?.trim() || null,
         });
 
+        this.logger.log(`createPet: created pet=${pet.id} name="${pet.name}" for user=${user.id}`);
+
         return {
             id: pet.id,
             name: pet.name,
@@ -203,24 +219,27 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Param('petId') petId: string,
     ) {
+        this.logger.log(`getTodayEventsForPet tgUser=${req.telegramUser.id} pet=${petId}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
 
         if (!user) {
+            this.logger.warn(`getTodayEventsForPet: user not found tgUser=${req.telegramUser.id}`);
             return [];
         }
 
         const pet = await this.petsService.findByIdForUser(user, petId);
         if (!pet) {
+            this.logger.warn(`getTodayEventsForPet: no access to pet=${petId} user=${user.id}`);
             throw new ForbiddenException('No access to this pet');
         }
 
         const events = await this.petEventsService.getTodayEventsForUser(user);
+        const filtered = events.filter((e) => e.pet?.id === pet.id);
+        this.logger.debug(`getTodayEventsForPet: ${filtered.length} events for pet=${petId}`);
 
-        return events
-            .filter((e) => e.pet?.id === pet.id)
-            .map((e) => this.mapEvent(e));
+        return filtered.map((e) => this.mapEvent(e));
     }
 
     @Post('events')
@@ -228,7 +247,9 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Body() body: CreateEventDto,
     ) {
+        this.logger.log(`createEvent tgUser=${req.telegramUser.id} type=${body.type}`);
         if (!body.type || !Object.values(PetEventType).includes(body.type)) {
+            this.logger.warn(`createEvent: invalid type="${body.type}"`);
             throw new ForbiddenException('Invalid event type');
         }
 
@@ -237,6 +258,7 @@ export class MiniappController {
         );
 
         if (!user) {
+            this.logger.warn(`createEvent: user not found tgUser=${req.telegramUser.id}`);
             throw new NotFoundException('User not found. Complete onboarding in the bot first.');
         }
 
@@ -248,6 +270,7 @@ export class MiniappController {
             type: body.type,
             value: body.value ?? null,
         });
+        this.logger.log(`createEvent: created event=${event.id} type=${body.type} user=${user.id}`);
 
         return this.mapEvent(event);
     }
@@ -258,7 +281,9 @@ export class MiniappController {
         @Param('petId') petId: string,
         @Body() body: CreateEventDto,
     ) {
+        this.logger.log(`createEventForPet tgUser=${req.telegramUser.id} pet=${petId} type=${body.type}`);
         if (!body.type || !Object.values(PetEventType).includes(body.type)) {
+            this.logger.warn(`createEventForPet: invalid type="${body.type}"`);
             throw new ForbiddenException('Invalid event type');
         }
 
@@ -267,11 +292,13 @@ export class MiniappController {
         );
 
         if (!user) {
+            this.logger.warn(`createEventForPet: user not found tgUser=${req.telegramUser.id}`);
             throw new NotFoundException('User not found. Complete onboarding in the bot first.');
         }
 
         const pet = await this.petsService.findByIdForUser(user, petId);
         if (!pet) {
+            this.logger.warn(`createEventForPet: no access to pet=${petId} user=${user.id}`);
             throw new ForbiddenException('No access to this pet');
         }
 
@@ -282,6 +309,7 @@ export class MiniappController {
             value: body.value ?? null,
         });
 
+        this.logger.log(`createEventForPet: created event=${event.id} type=${body.type} pet=${petId}`);
         return this.mapEvent(event);
     }
 
@@ -290,6 +318,7 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Param('petId') petId: string,
     ) {
+        this.logger.log(`getPetMembers tgUser=${req.telegramUser.id} pet=${petId}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
@@ -311,6 +340,7 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Param('petId') petId: string,
     ) {
+        this.logger.log(`deletePet tgUser=${req.telegramUser.id} pet=${petId}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
@@ -338,6 +368,7 @@ export class MiniappController {
         @Param('petId') petId: string,
         @Body() body: AddPetMemberDto,
     ) {
+        this.logger.log(`addPetMember tgUser=${req.telegramUser.id} pet=${petId} targetTg=${body.telegramId}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
@@ -391,6 +422,7 @@ export class MiniappController {
         @Param('petId') petId: string,
         @Param('memberUserId') memberUserId: string,
     ) {
+        this.logger.log(`removePetMember tgUser=${req.telegramUser.id} pet=${petId} member=${memberUserId}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
@@ -423,6 +455,7 @@ export class MiniappController {
         @Param('petId') petId: string,
         @Body() body: CreateInviteDto,
     ) {
+        this.logger.log(`createPetInvite tgUser=${req.telegramUser.id} pet=${petId} role=${body.role ?? 'CAREGIVER'}`);
         const user = await this.usersService.findByTelegramId(
             String(req.telegramUser.id),
         );
@@ -482,6 +515,7 @@ export class MiniappController {
         @Param('petId') petId: string,
         @Body() body: UpdatePetDto,
     ) {
+        this.logger.log(`updatePet tgUser=${req.telegramUser.id} pet=${petId}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const pet = await this.petsService.findByIdForUser(user, petId);
@@ -504,6 +538,7 @@ export class MiniappController {
         @Param('eventId') eventId: string,
         @Body() body: UpdateEventDto,
     ) {
+        this.logger.log(`updateEvent tgUser=${req.telegramUser.id} event=${eventId}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const event = await this.petEventsService.findById(eventId);
@@ -524,6 +559,7 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Param('eventId') eventId: string,
     ) {
+        this.logger.log(`deleteEvent tgUser=${req.telegramUser.id} event=${eventId}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const event = await this.petEventsService.findById(eventId);
@@ -540,6 +576,7 @@ export class MiniappController {
         @Param('memberUserId') memberUserId: string,
         @Body() body: UpdateMemberDto,
     ) {
+        this.logger.log(`updateMemberRole tgUser=${req.telegramUser.id} pet=${petId} member=${memberUserId} role=${body.role}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const pet = await this.petsService.findByIdForUser(user, petId);
@@ -559,6 +596,7 @@ export class MiniappController {
         @Query('from') fromStr: string,
         @Query('to') toStr: string,
     ) {
+        this.logger.log(`getEventsInRange tgUser=${req.telegramUser.id} pet=${petId} from=${fromStr} to=${toStr}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) return [];
         const pet = await this.petsService.findByIdForUser(user, petId);
@@ -585,6 +623,7 @@ export class MiniappController {
         @Param('petId') petId: string,
         @UploadedFile() file: Express.Multer.File,
     ) {
+        this.logger.log(`uploadAvatar tgUser=${req.telegramUser.id} pet=${petId} size=${file?.size ?? 0}`);
         if (!file) throw new ForbiddenException('File is required');
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
@@ -601,6 +640,7 @@ export class MiniappController {
         @Req() req: AuthedRequest,
         @Param('petId') petId: string,
     ) {
+        this.logger.log(`deleteAvatar tgUser=${req.telegramUser.id} pet=${petId}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const pet = await this.petsService.findByIdForUser(user, petId);
@@ -626,6 +666,7 @@ export class MiniappController {
         @Param('eventId') eventId: string,
         @UploadedFiles() files: Express.Multer.File[],
     ) {
+        this.logger.log(`uploadEventImages tgUser=${req.telegramUser.id} event=${eventId} files=${files?.length ?? 0}`);
         if (!files?.length) throw new ForbiddenException('At least one file is required');
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
@@ -648,6 +689,7 @@ export class MiniappController {
         @Param('eventId') eventId: string,
         @Param('imageId') imageId: string,
     ) {
+        this.logger.log(`deleteEventImage tgUser=${req.telegramUser.id} event=${eventId} image=${imageId}`);
         const user = await this.usersService.findByTelegramId(String(req.telegramUser.id));
         if (!user) throw new NotFoundException('User not found');
         const img = await this.petEventsService.findImageById(imageId);

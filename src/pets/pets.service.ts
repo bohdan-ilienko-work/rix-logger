@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -40,6 +40,8 @@ export interface DeletePetResult {
 
 @Injectable()
 export class PetsService {
+    private readonly logger = new Logger(PetsService.name);
+
     constructor(
         @InjectRepository(Pet)
         private readonly petsRepository: Repository<Pet>,
@@ -64,6 +66,8 @@ export class PetsService {
 
         const savedPet = await this.petsRepository.save(pet);
 
+        this.logger.log(`Created pet=${savedPet.id} name="${savedPet.name}" owner=${owner.id}`);
+
         await this.addOrUpdateMember({
             pet: savedPet,
             user: owner,
@@ -75,6 +79,7 @@ export class PetsService {
     }
 
     async addOrUpdateMember(payload: AddPetMemberInput): Promise<PetMember> {
+        this.logger.log(`addOrUpdateMember pet=${payload.pet.id} user=${payload.user.id} role=${payload.role}`);
         const existing = await this.petMembersRepository.findOne({
             where: {
                 pet: { id: payload.pet.id },
@@ -100,11 +105,13 @@ export class PetsService {
     }
 
     async deletePet(pet: Pet): Promise<DeletePetResult> {
+        this.logger.log(`Deleting pet=${pet.id} name="${pet.name}"`);
         await this.petsRepository.remove(pet);
         return { deleted: true };
     }
 
     async updatePet(pet: Pet, payload: Partial<CreatePetInput>): Promise<Pet> {
+        this.logger.log(`Updating pet=${pet.id} fields=${Object.keys(payload).join(',')}`);
         if (payload.name !== undefined) pet.name = payload.name;
         if (payload.age !== undefined) pet.age = payload.age ?? null;
         if (payload.breed !== undefined) pet.breed = payload.breed ?? null;
@@ -226,6 +233,7 @@ export class PetsService {
     }
 
     async removeMember(pet: Pet, userId: string): Promise<boolean> {
+        this.logger.log(`removeMember pet=${pet.id} user=${userId}`);
         const membership = await this.petMembersRepository.findOne({
             where: {
                 pet: { id: pet.id },
@@ -271,6 +279,7 @@ export class PetsService {
         tag: string | null;
         expiresAt: number | null;
     }): Promise<PetInvite> {
+        this.logger.log(`createInvite pet=${input.pet.id} role=${input.role}`);
         const invite = this.petInvitesRepository.create({
             pet: input.pet,
             role: input.role,
@@ -290,6 +299,7 @@ export class PetsService {
     // ─── Avatar ───
 
     async setAvatar(pet: Pet, data: Buffer, mime: string): Promise<void> {
+        this.logger.log(`setAvatar pet=${pet.id} mime=${mime} size=${data.length}`);
         await this.petsRepository
             .createQueryBuilder()
             .update(Pet)
@@ -299,6 +309,7 @@ export class PetsService {
     }
 
     async removeAvatar(pet: Pet): Promise<void> {
+        this.logger.log(`removeAvatar pet=${pet.id}`);
         await this.petsRepository
             .createQueryBuilder()
             .update(Pet)

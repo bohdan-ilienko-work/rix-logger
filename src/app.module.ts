@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -10,6 +10,7 @@ import { PetsModule } from './pets/pets.module';
 import { PetEventsModule } from './pet-events/pet-events.module';
 import { BotModule } from './bot/bot.module';
 import { MiniappModule } from './miniapp/miniapp.module';
+import { RequestLoggerMiddleware } from './common/request-logger.middleware';
 
 @Module({
   imports: [
@@ -36,4 +37,8 @@ import { MiniappModule } from './miniapp/miniapp.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*path');
+  }
+}

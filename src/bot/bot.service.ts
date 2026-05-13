@@ -186,6 +186,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleStartCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/start from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId) {
             await ctx.reply(t('errorNoTelegramUser', this.getLang(ctx)));
             return;
@@ -193,6 +194,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
         const startPayload = this.getStartPayload(ctx);
         if (startPayload?.startsWith('join_')) {
+            this.logger.log(`/start join invite tg=${telegramId}`);
             await this.handleInviteJoin(ctx, telegramId, startPayload.slice(5));
             return;
         }
@@ -226,6 +228,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleAddPetCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/add_pet from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId) {
             await ctx.reply(t('errorNoTelegramUser', this.getLang(ctx)));
             return;
@@ -251,6 +254,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         telegramId: string,
         inviteId: string,
     ): Promise<void> {
+        this.logger.log(`handleInviteJoin tg=${telegramId} invite=${inviteId}`);
         const detectedLang = toLang(ctx.from?.language_code);
         const user =
             (await this.usersService.findByTelegramId(telegramId)) ??
@@ -301,6 +305,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             tag: invite.tag,
         });
 
+        this.logger.log(`Invite joined: tg=${telegramId} pet=${pet.id} role=${invite.role}`);
+
         this.awaitingAddPetDecision.delete(telegramId);
         this.pendingInviteTokens.delete(telegramId);
         this.onboardingSessions.delete(telegramId);
@@ -311,6 +317,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleRestartOnboardingCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/restart_onboarding from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId) {
             await ctx.reply(t('errorNoTelegramUser', this.getLang(ctx)));
             return;
@@ -328,6 +335,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleSharePetCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/share_pet from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId || !ctx.message || !('text' in ctx.message)) {
             return;
         }
@@ -387,6 +395,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleContactMessage(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`Contact message from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId || !ctx.message || !('contact' in ctx.message)) {
             return;
         }
@@ -504,6 +513,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         }
 
         const text = textMessage.trim();
+        this.logger.debug(`Text message from tg=${telegramId} len=${text.length}`);
 
         if (text.startsWith('/')) {
             return;
@@ -590,6 +600,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleEditPetCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/edit_pet from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId) return;
         const user = await this.usersService.findByTelegramId(telegramId);
         const lang = this.getLang(ctx, user);
@@ -778,6 +789,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                     weightKg: finalPetData.weightKg ?? null,
                     note: finalPetData.note ?? null,
                 });
+
+                this.logger.log(`Onboarding complete: tg=${telegramId} pet=${pet.id} name="${pet.name}"`);
 
                 this.onboardingSessions.set(telegramId, {
                     step: OnboardingStep.COMPLETED,
@@ -1029,6 +1042,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleCallbackQuery(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`Callback query from tg=${telegramId ?? 'unknown'} data=${ctx.callbackQuery?.data ?? '-'}`);
         if (!telegramId || !ctx.callbackQuery) {
             return;
         }
@@ -1489,6 +1503,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handleSetAvatarCommand(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`/set_avatar from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId) return;
         const user = await this.usersService.findByTelegramId(telegramId);
         const lang = this.getLang(ctx, user);
@@ -1520,6 +1535,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
     private async handlePhotoMessage(ctx: BotContext): Promise<void> {
         const telegramId = this.getTelegramId(ctx);
+        this.logger.log(`Photo message from tg=${telegramId ?? 'unknown'}`);
         if (!telegramId || !ctx.message?.photo) return;
 
         const user = await this.usersService.findByTelegramId(telegramId);

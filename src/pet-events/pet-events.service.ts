@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -15,6 +15,8 @@ export interface CreatePetEventInput {
 
 @Injectable()
 export class PetEventsService {
+    private readonly logger = new Logger(PetEventsService.name);
+
     constructor(
         @InjectRepository(PetEvent)
         private readonly petEventsRepository: Repository<PetEvent>,
@@ -30,29 +32,37 @@ export class PetEventsService {
             value: payload.value ?? null,
         });
 
-        return this.petEventsRepository.save(event);
+        const saved = await this.petEventsRepository.save(event);
+        this.logger.log(`Created event=${saved.id} type=${payload.type} owner=${payload.owner.id} pet=${payload.pet?.id ?? 'none'}`);
+        return saved;
     }
 
     async findById(id: string): Promise<PetEvent | null> {
-        return this.petEventsRepository.findOne({
+        const event = await this.petEventsRepository.findOne({
             where: { id },
             relations: ['owner', 'pet', 'images'],
         });
+        this.logger.debug(`findById event=${id} found=${!!event}`);
+        return event;
     }
 
     async updateEvent(event: PetEvent, value: PetEventValue | null, type?: PetEventType, createdAt?: Date): Promise<PetEvent> {
         event.value = value;
         if (type) event.type = type;
         if (createdAt) event.createdAt = createdAt;
-        return this.petEventsRepository.save(event);
+        const saved = await this.petEventsRepository.save(event);
+        this.logger.log(`Updated event=${event.id} type=${saved.type}`);
+        return saved;
     }
 
     async deleteEvent(event: PetEvent): Promise<void> {
+        const id = event.id;
         await this.petEventsRepository.remove(event);
+        this.logger.log(`Deleted event=${id}`);
     }
 
     async getEventsForPetInRange(user: User, petId: string, from: Date, to: Date): Promise<PetEvent[]> {
-        return this.petEventsRepository
+        const events = await this.petEventsRepository
             .createQueryBuilder('event')
             .leftJoinAndSelect('event.pet', 'pet')
             .leftJoin('event.images', 'images')
@@ -68,13 +78,15 @@ export class PetEventsService {
             )
             .orderBy('event.createdAt', 'DESC')
             .getMany();
+        this.logger.debug(`getEventsForPetInRange pet=${petId} user=${user.id} from=${from.toISOString()} to=${to.toISOString()} count=${events.length}`);
+        return events;
     }
 
     async getTodayEventsForUser(owner: User): Promise<PetEvent[]> {
         const since = new Date();
         since.setHours(since.getHours() - 24);
 
-        return this.petEventsRepository
+        const events = await this.petEventsRepository
             .createQueryBuilder('event')
             .leftJoinAndSelect('event.pet', 'pet')
             .leftJoin('event.images', 'images')
@@ -89,13 +101,17 @@ export class PetEventsService {
             )
             .orderBy('event.createdAt', 'DESC')
             .getMany();
+        this.logger.debug(`getTodayEventsForUser user=${owner.id} count=${events.length}`);
+        return events;
     }
 
     // ─── Event images ───
 
     async addImage(event: PetEvent, data: Buffer, mime: string): Promise<EventImage> {
         const img = this.eventImagesRepository.create({ event, data, mime });
-        return this.eventImagesRepository.save(img);
+        const saved = await this.eventImagesRepository.save(img);
+        this.logger.log(`Added image=${saved.id} to event=${event.id} mime=${mime} size=${data.length}`);
+        return saved;
     }
 
     async countImages(eventId: string): Promise<number> {
@@ -118,6 +134,8 @@ export class PetEventsService {
     }
 
     async deleteImage(image: EventImage): Promise<void> {
+        const id = image.id;
         await this.eventImagesRepository.remove(image);
+        this.logger.log(`Deleted image=${id}`);
     }
 }
