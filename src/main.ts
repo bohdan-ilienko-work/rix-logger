@@ -5,8 +5,10 @@ import { Logger } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Allow the mini app (any origin in dev, restrict in production)
-  app.enableCors({ origin: '*' });
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.enableCors({
+    origin: corsOrigin ? corsOrigin.split(',').map(s => s.trim()) : '*',
+  });
 
   app.setGlobalPrefix('api');
 
